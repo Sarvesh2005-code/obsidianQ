@@ -7,4 +7,5 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Dependencies will be added in Stage 2 & 3
+zeroize = { version = "1.8", features = ["zeroize_derive"] }
+sha3 = "0.10"

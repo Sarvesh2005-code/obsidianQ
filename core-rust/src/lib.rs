@@ -1,5 +1,6 @@
 pub mod reduce;
 pub mod ntt;
+pub mod kem;
 
 use std::os::raw::{c_int, c_void};
 
