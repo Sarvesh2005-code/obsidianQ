@@ -4,9 +4,9 @@ import java.nio.ByteBuffer;
 
 public class ObsidianNativeBridge {
     
-    // Load the native Rust dynamic library at runtime
+    // Load the native Rust dynamic library at runtime via our zero-dependency extractor
     static {
-        System.loadLibrary("obsidian_core"); 
+        com.obsidianq.util.NativeExtractor.loadLibrary(); 
     }
 
     /**
