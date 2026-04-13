@@ -1,0 +1,10 @@
+[package]
+name = "obsidian-core"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Dependencies will be added in Stage 2 & 3
