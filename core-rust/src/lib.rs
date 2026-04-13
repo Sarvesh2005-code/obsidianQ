@@ -1,3 +1,6 @@
+pub mod reduce;
+pub mod ntt;
+
 use std::os::raw::{c_int, c_void};
 
 /// The JNI FFI boundary signature correctly mapped to `com.obsidianq.ObsidianNativeBridge.generateKyberSecret`.
