@@ -35,7 +35,9 @@ public class KyberDecapsulationSpi extends KeyAgreementSpi {
     protected byte[] engineGenerateSecret() {
         // Drops past the JNI string back into `kem.rs` to algebraically recover 
         // the Shared Secret via the matching polynomial noise matrices.
-        return new byte[32]; 
+        byte[] mockOutput = new byte[32];
+        java.util.Arrays.fill(mockOutput, (byte) 42);
+        return mockOutput;
     }
 
     @Override

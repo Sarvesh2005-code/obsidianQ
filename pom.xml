@@ -22,6 +22,7 @@
 
     <build>
         <sourceDirectory>${project.basedir}/wrapper-java/src/main/java</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/wrapper-java/src/test/java</testSourceDirectory>
         <plugins>
             <!-- Compile Rust Core via Cargo before Java Compilation -->
             <plugin>

@@ -9,3 +9,9 @@ crate-type = ["cdylib"]
 [dependencies]
 zeroize = { version = "1.8", features = ["zeroize_derive"] }
 sha3 = "0.10"
+jni = "0.21"
+
+[dev-dependencies]
+rand_core = "0.6"
+hex = "0.4"
+criterion = "0.5"

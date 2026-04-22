@@ -1,5 +1,4 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use dudect_benchmark::{dudect_main, ctbench_main, DudectConfig};
 
 // To mathematically prove our NTT operates in constant time, we feed it 
 // totally random polynomial vectors vs. highly structured fixed arrays.
