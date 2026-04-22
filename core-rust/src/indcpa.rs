@@ -52,20 +52,16 @@ pub fn indcpa_keypair(pk: &mut [u8; KYBER_INDCPA_PUBLICKEYBYTES], sk: &mut [u8; 
     // Generate matrix A
     gen_matrix(&mut a, seed, false);
     
-    // Sample secret vector s
+    // Sample secret vector s (η=2 requires 128 bytes per polynomial)
     for i in 0..KYBER_K {
-        let prf_out = prf(noiseseed, i as u8, 64);
-        let mut prf_array = [0u8; 64];
-        prf_array.copy_from_slice(&prf_out);
-        cbd2(&prf_array, &mut skpv.vec[i].coeffs);
+        let prf_out = prf(noiseseed, i as u8, 128);
+        cbd2(&prf_out, &mut skpv.vec[i].coeffs);
     }
     
     // Sample error vector e
     for i in 0..KYBER_K {
-        let prf_out = prf(noiseseed, (i + KYBER_K) as u8, 64);
-        let mut prf_array = [0u8; 64];
-        prf_array.copy_from_slice(&prf_out);
-        cbd2(&prf_array, &mut e.vec[i].coeffs);
+        let prf_out = prf(noiseseed, (i + KYBER_K) as u8, 128);
+        cbd2(&prf_out, &mut e.vec[i].coeffs);
     }
     
     skpv.ntt();
@@ -111,23 +107,17 @@ pub fn indcpa_enc(c: &mut [u8; KYBER_INDCPA_BYTES], m: &[u8; 32], pk: &[u8; KYBE
     gen_matrix(&mut a, &seed, true);
     
     for i in 0..KYBER_K {
-        let prf_out = prf(coins, i as u8, 64);
-        let mut prf_array = [0u8; 64];
-        prf_array.copy_from_slice(&prf_out);
-        cbd2(&prf_array, &mut sp.vec[i].coeffs);
+        let prf_out = prf(coins, i as u8, 128);
+        cbd2(&prf_out, &mut sp.vec[i].coeffs);
     }
     
     for i in 0..KYBER_K {
-        let prf_out = prf(coins, (i + KYBER_K) as u8, 64);
-        let mut prf_array = [0u8; 64];
-        prf_array.copy_from_slice(&prf_out);
-        cbd2(&prf_array, &mut ep.vec[i].coeffs);
+        let prf_out = prf(coins, (i + KYBER_K) as u8, 128);
+        cbd2(&prf_out, &mut ep.vec[i].coeffs);
     }
     
-    let prf_out = prf(coins, (KYBER_K * 2) as u8, 64);
-    let mut prf_array = [0u8; 64];
-    prf_array.copy_from_slice(&prf_out);
-    cbd2(&prf_array, &mut epp.coeffs);
+    let prf_out = prf(coins, (KYBER_K * 2) as u8, 128);
+    cbd2(&prf_out, &mut epp.coeffs);
     
     sp.ntt();
     

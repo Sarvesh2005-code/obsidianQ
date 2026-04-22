@@ -45,12 +45,7 @@ pub fn prf(key: &[u8; 32], nonce: u8, len: usize) -> Vec<u8> {
     out
 }
 
-/// XOF (SHAKE-128)
-pub struct Xof {
-    reader: sha3::Shake128ReaderCore, // We'll just use a simpler interface
-}
-
-/// Standalone function for XOF (SHAKE-128)
+/// Standalone XOF function (SHAKE-128)
 pub fn xof_absorb_squeeze(seed: &[u8; 32], x: u8, y: u8, len: usize) -> Vec<u8> {
     let mut hasher = Shake128::default();
     Update::update(&mut hasher, seed);

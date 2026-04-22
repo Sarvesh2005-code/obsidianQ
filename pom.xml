@@ -6,19 +6,51 @@
 
     <groupId>com.obsidianq</groupId>
     <artifactId>obsidianq-sdk</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>0.1.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>ObsidianQ</name>
-    <description>Enterprise Quantum-Safe Drop-In Cryptography SDK implementing ML-KEM/Kyber</description>
+    <description>Enterprise Quantum-Safe Drop-In Cryptography SDK implementing NIST FIPS 203 (ML-KEM-768)</description>
+    <url>https://github.com/Sarvesh2005-code/obsidianQ</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>sarvesh</id>
+            <name>Sarvesh</name>
+            <url>https://github.com/Sarvesh2005-code</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/Sarvesh2005-code/obsidianQ.git</connection>
+        <developerConnection>scm:git:ssh://github.com/Sarvesh2005-code/obsidianQ.git</developerConnection>
+        <url>https://github.com/Sarvesh2005-code/obsidianQ</url>
+    </scm>
 
     <properties>
-        <!-- PRD Section 5: Must be fully backward compatible with Java 8 -->
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <!-- Java 21 required for javax.crypto.KEM (JEP 452) -->
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <rust.target.dir>${project.basedir}/core-rust/target/release</rust.target.dir>
     </properties>
+
+    <dependencies>
+        <!-- JUnit 5 for testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 
     <build>
         <sourceDirectory>${project.basedir}/wrapper-java/src/main/java</sourceDirectory>
@@ -74,6 +106,42 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!-- Java Compiler Configuration -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+
+            <!-- Surefire for JUnit 5 tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+
+            <!-- JAR plugin with manifest -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Implementation-Title>ObsidianQ SDK</Implementation-Title>
+                            <Implementation-Version>${project.version}</Implementation-Version>
+                            <Automatic-Module-Name>com.obsidianq</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
             </plugin>
         </plugins>
     </build>

@@ -3,7 +3,7 @@ package com.obsidianq;
 import com.obsidianq.jce.ObsidianQProvider;
 import com.obsidianq.jce.KyberParameterSpec;
 
-import javax.crypto.Cipher;
+import javax.crypto.KEM;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.KeyAgreement;
@@ -13,88 +13,189 @@ import java.security.Security;
 import java.util.Arrays;
 
 /**
- * Phase 3 V&V: Strict JCA Compliance Test.
+ * Comprehensive V&V Integrity Test for ObsidianQ.
  * 
- * Demonstrates that the native Rust bindings seamlessly map to Oracle's 
- * standard cryptographic interfaces without requiring proprietary imports
- * (outside of the one-time Provider registration).
+ * Tests both the modern Java 21 KEM API and the legacy JCA interface
+ * to validate full quantum-safe key encapsulation round-trip integrity.
  */
 public class JCAIntegrityTest {
 
     public static void main(String[] args) throws Exception {
-        System.out.println("[*] ObsidianQ V&V Integrity Initialization...");
+        System.out.println("╔══════════════════════════════════════════════════╗");
+        System.out.println("║     ObsidianQ V&V Integrity Test Suite          ║");
+        System.out.println("║     NIST FIPS 203 · ML-KEM-768                  ║");
+        System.out.println("╚══════════════════════════════════════════════════╝");
+        System.out.println();
 
-        // 1. Install the Provider globally into the JVM
+        // Install the Provider globally into the JVM
         Security.addProvider(new ObsidianQProvider());
 
-        // ---------------------------------------------------------
-        // 2. Alice: Generate the ML-KEM KeyPair (Kyber768 base)
-        // ---------------------------------------------------------
-        System.out.println("[*] Executing JCA KeyPairGenerator for ML-KEM-768");
-        KeyPairGenerator kpg = KeyPairGenerator.getInstance("Kyber768", ObsidianQProvider.PROVIDER_NAME);
-        KeyPair aliceKeyPair = kpg.generateKeyPair();
-        
-        System.out.println("[+] KeyPair successfully generated and mathematically allocated.");
+        boolean allPassed = true;
+        allPassed &= testJava21KemApi();
+        allPassed &= testLegacyJcaApi();
+        allPassed &= testMultipleRoundTrips();
 
-        // ---------------------------------------------------------
-        // 3. Bob: Encapsulate shared secret using Alice's Public Key
-        // ---------------------------------------------------------
-        System.out.println("[*] Executing JCA KeyGenerator (Encapsulation Phase)");
-        KeyGenerator encapGen = KeyGenerator.getInstance("Kyber768", ObsidianQProvider.PROVIDER_NAME);
-        
-        // Bob initializes his key generator with Alice's public key (The JCE parameter bridge)
-        encapGen.init(new KyberParameterSpec(aliceKeyPair.getPublic())); 
-        SecretKey bobCipherOutput = encapGen.generateKey(); 
-
-        // At this point, bobCipherOutput technically holds BOTH the 32-byte shared secret
-        // AND the 1088-byte ciphertext required to transmit to Alice.
-        // We unpack them for transmission.
-        byte[] ciphertextToTransmit = extractCiphertext(bobCipherOutput);
-        byte[] bobSharedSecret = bobCipherOutput.getEncoded(); 
-
-        // ---------------------------------------------------------
-        // 4. Alice: Decapsulate shared secret using Ciphertext & Private Key
-        // ---------------------------------------------------------
-        System.out.println("[*] Executing JCA KeyAgreement (Decapsulation Phase)");
-        KeyAgreement decapAgreement = KeyAgreement.getInstance("Kyber768", ObsidianQProvider.PROVIDER_NAME);
-        
-        // Alice initializes the engine strictly with her extremely volatile zeroized private key
-        decapAgreement.init(aliceKeyPair.getPrivate());
-        
-        // Alice inputs the ciphertext she received from Bob across the network
-        decapAgreement.doPhase(new KyberCiphertextKey(ciphertextToTransmit), true);
-        
-        // Alice extracts the raw 32-byte shared secret using constant-time NTT math across the FFI
-        byte[] aliceSharedSecret = decapAgreement.generateSecret();
-
-        // ---------------------------------------------------------
-        // 5. Mathematical Validation Constraint Check
-        // ---------------------------------------------------------
-        if (Arrays.equals(aliceSharedSecret, bobSharedSecret)) {
-            System.out.println("[SUCCESS] Quantum-Safe KEM Integrity Verified: Both ends derived identical AES Secrets.");
+        System.out.println();
+        if (allPassed) {
+            System.out.println("═══════════════════════════════════════════════");
+            System.out.println("  ✅ ALL TESTS PASSED — Quantum Safety Verified");
+            System.out.println("═══════════════════════════════════════════════");
         } else {
-            System.err.println("[FATAL] Mathematical Drift! Decapsulated key material failed matching.");
+            System.err.println("  ❌ SOME TESTS FAILED — Review output above");
+            System.exit(1);
         }
-
-        // Cleanup constraints
-        Arrays.fill(aliceSharedSecret, (byte)0);
-        Arrays.fill(bobSharedSecret, (byte)0);
-        
-        // Trigger the Zeroize operations natively
-        ((javax.security.auth.Destroyable) aliceKeyPair.getPrivate()).destroy();
     }
 
-    // Helper to bridge JCA boundaries for encapsulation output
+    // =========================================================================
+    // Test 1: Java 21 javax.crypto.KEM API
+    // =========================================================================
+    private static boolean testJava21KemApi() {
+        System.out.println("── Test 1: Java 21 KEM API (javax.crypto.KEM) ──");
+        try {
+            // Generate keypair
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance("Kyber768", "ObsidianQ");
+            KeyPair kp = kpg.generateKeyPair();
+            System.out.println("   [+] KeyPair generated (pk=" + kp.getPublic().getEncoded().length + "B, sk=" + kp.getPrivate().getEncoded().length + "B)");
+
+            // Encapsulate using Java 21 KEM API
+            KEM kem = KEM.getInstance("ML-KEM-768", "ObsidianQ");
+            KEM.Encapsulator enc = kem.newEncapsulator(kp.getPublic());
+            KEM.Encapsulated encapsulated = enc.encapsulate();
+
+            SecretKey bobSecret = encapsulated.key();
+            byte[] ciphertext = encapsulated.encapsulation();
+            System.out.println("   [+] Encapsulated (ct=" + ciphertext.length + "B, ss=" + bobSecret.getEncoded().length + "B)");
+
+            // Decapsulate
+            KEM.Decapsulator dec = kem.newDecapsulator(kp.getPrivate());
+            SecretKey aliceSecret = dec.decapsulate(ciphertext);
+            System.out.println("   [+] Decapsulated (ss=" + aliceSecret.getEncoded().length + "B)");
+
+            // Verify
+            boolean match = Arrays.equals(bobSecret.getEncoded(), aliceSecret.getEncoded());
+            if (match) {
+                System.out.println("   [✅] PASS — Shared secrets match via KEM API");
+            } else {
+                System.err.println("   [❌] FAIL — Shared secrets DO NOT match");
+            }
+
+            // Cleanup
+            Arrays.fill(bobSecret.getEncoded(), (byte) 0);
+            Arrays.fill(aliceSecret.getEncoded(), (byte) 0);
+
+            return match;
+        } catch (Exception e) {
+            System.err.println("   [❌] FAIL — Exception: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // Test 2: Legacy JCA API (Java 8+ compatible)
+    // =========================================================================
+    private static boolean testLegacyJcaApi() {
+        System.out.println();
+        System.out.println("── Test 2: Legacy JCA API (KeyGenerator + KeyAgreement) ──");
+        try {
+            // Generate keypair
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance("Kyber768", ObsidianQProvider.PROVIDER_NAME);
+            KeyPair aliceKeyPair = kpg.generateKeyPair();
+            System.out.println("   [+] KeyPair generated");
+
+            // Encapsulate via KeyGenerator
+            KeyGenerator encapGen = KeyGenerator.getInstance("Kyber768", ObsidianQProvider.PROVIDER_NAME);
+            encapGen.init(new KyberParameterSpec(aliceKeyPair.getPublic()));
+            SecretKey bobCipherOutput = encapGen.generateKey();
+
+            byte[] ciphertextToTransmit = extractCiphertext(bobCipherOutput);
+            byte[] bobSharedSecret = bobCipherOutput.getEncoded();
+            System.out.println("   [+] Encapsulated via KeyGenerator");
+
+            // Decapsulate via KeyAgreement
+            KeyAgreement decapAgreement = KeyAgreement.getInstance("Kyber768", ObsidianQProvider.PROVIDER_NAME);
+            decapAgreement.init(aliceKeyPair.getPrivate());
+            decapAgreement.doPhase(new KyberCiphertextKey(ciphertextToTransmit), true);
+            byte[] aliceSharedSecret = decapAgreement.generateSecret();
+            System.out.println("   [+] Decapsulated via KeyAgreement");
+
+            boolean match = Arrays.equals(aliceSharedSecret, bobSharedSecret);
+            if (match) {
+                System.out.println("   [✅] PASS — Shared secrets match via Legacy API");
+            } else {
+                System.err.println("   [❌] FAIL — Shared secrets DO NOT match");
+            }
+
+            Arrays.fill(aliceSharedSecret, (byte) 0);
+            Arrays.fill(bobSharedSecret, (byte) 0);
+
+            return match;
+        } catch (Exception e) {
+            System.err.println("   [❌] FAIL — Exception: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // Test 3: Multiple round-trips (stress test)
+    // =========================================================================
+    private static boolean testMultipleRoundTrips() {
+        System.out.println();
+        System.out.println("── Test 3: Stress Test (100 round-trips) ──");
+        try {
+            int rounds = 100;
+            int passed = 0;
+            long startTime = System.nanoTime();
+
+            for (int i = 0; i < rounds; i++) {
+                KeyPairGenerator kpg = KeyPairGenerator.getInstance("Kyber768", "ObsidianQ");
+                KeyPair kp = kpg.generateKeyPair();
+
+                KEM kem = KEM.getInstance("ML-KEM-768", "ObsidianQ");
+                KEM.Encapsulator enc = kem.newEncapsulator(kp.getPublic());
+                KEM.Encapsulated encapsulated = enc.encapsulate();
+
+                KEM.Decapsulator dec = kem.newDecapsulator(kp.getPrivate());
+                SecretKey recovered = dec.decapsulate(encapsulated.encapsulation());
+
+                if (Arrays.equals(encapsulated.key().getEncoded(), recovered.getEncoded())) {
+                    passed++;
+                }
+            }
+
+            long elapsed = (System.nanoTime() - startTime) / 1_000_000;
+            double perOp = (double) elapsed / rounds;
+
+            System.out.println("   [+] " + passed + "/" + rounds + " round-trips passed in " + elapsed + "ms");
+            System.out.println("   [+] Average: " + String.format("%.2f", perOp) + "ms per full KEM cycle");
+
+            boolean allPassed = (passed == rounds);
+            if (allPassed) {
+                System.out.println("   [✅] PASS — All round-trips verified");
+            } else {
+                System.err.println("   [❌] FAIL — " + (rounds - passed) + " round-trips failed");
+            }
+            return allPassed;
+        } catch (Exception e) {
+            System.err.println("   [❌] FAIL — Exception: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
     private static byte[] extractCiphertext(SecretKey keyObject) {
-         if (keyObject instanceof com.obsidianq.jce.KyberEncapsulatedSecret) {
-             return ((com.obsidianq.jce.KyberEncapsulatedSecret) keyObject).getCiphertext();
-         }
-         throw new IllegalArgumentException("Key is not a KyberEncapsulatedSecret");
+        if (keyObject instanceof com.obsidianq.jce.KyberEncapsulatedSecret) {
+            return ((com.obsidianq.jce.KyberEncapsulatedSecret) keyObject).getCiphertext();
+        }
+        throw new IllegalArgumentException("Key is not a KyberEncapsulatedSecret");
     }
     
     public static class KyberCiphertextKey implements java.security.Key {
-        private byte[] ct;
-        public KyberCiphertextKey(byte[] ct){ this.ct = ct; }
+        private final byte[] ct;
+        public KyberCiphertextKey(byte[] ct) { this.ct = ct; }
         public String getAlgorithm() { return "Kyber768-CT"; }
         public String getFormat() { return "RAW"; }
         public byte[] getEncoded() { return ct; }

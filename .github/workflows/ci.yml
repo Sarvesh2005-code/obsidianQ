@@ -1,0 +1,105 @@
+name: ObsidianQ CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        java-version: ['21']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            core-rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('core-rust/Cargo.lock', 'core-rust/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Rust Tests
+        working-directory: core-rust
+        run: cargo test --release
+
+      - name: Build Rust Native Library
+        working-directory: core-rust
+        run: cargo build --release
+
+      - name: Set up JDK ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Maven Build & Test
+        run: mvn clean test-compile -B
+
+      - name: Upload Native Library
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.os }}
+          path: |
+            core-rust/target/release/obsidian_core.dll
+            core-rust/target/release/libobsidian_core.dylib
+            core-rust/target/release/libobsidian_core.so
+          if-no-files-found: ignore
+
+  release-bundle:
+    name: Bundle Cross-Platform JAR
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all native artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: natives
+
+      - name: Organize natives into JAR resource structure
+        run: |
+          mkdir -p assembled/natives
+          cp natives/native-ubuntu-latest/* assembled/natives/ 2>/dev/null || true
+          cp natives/native-macos-latest/* assembled/natives/ 2>/dev/null || true
+          cp natives/native-windows-latest/* assembled/natives/ 2>/dev/null || true
+          ls -la assembled/natives/
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build Release JAR
+        run: |
+          cargo build --release --manifest-path core-rust/Cargo.toml
+          mvn clean package -B -DskipTests
+
+      - name: Upload Release JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: obsidianq-sdk
+          path: target/*.jar

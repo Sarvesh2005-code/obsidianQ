@@ -43,10 +43,14 @@ impl Poly {
     }
 
     pub fn basemul_montgomery(&mut self, a: &Poly, b: &Poly) {
-        for i in 0..KYBER_N / 2 {
-            let (r0, r1) = basemul(&a.coeffs[2 * i..2 * i + 2], &b.coeffs[2 * i..2 * i + 2], crate::ntt::ZETAS[64 + i]);
-            self.coeffs[2 * i] = r0;
-            self.coeffs[2 * i + 1] = r1;
+        for i in 0..(KYBER_N / 4) {
+            let zeta0 = crate::ntt::ZETAS[64 + i];
+            let (r0, r1) = basemul(&a.coeffs[4 * i..4 * i + 2], &b.coeffs[4 * i..4 * i + 2], zeta0);
+            self.coeffs[4 * i] = r0;
+            self.coeffs[4 * i + 1] = r1;
+            let (r2, r3) = basemul(&a.coeffs[4 * i + 2..4 * i + 4], &b.coeffs[4 * i + 2..4 * i + 4], -zeta0);
+            self.coeffs[4 * i + 2] = r2;
+            self.coeffs[4 * i + 3] = r3;
         }
     }
 
