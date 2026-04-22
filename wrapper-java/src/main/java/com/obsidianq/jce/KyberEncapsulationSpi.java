@@ -18,6 +18,8 @@ import java.security.spec.AlgorithmParameterSpec;
  */
 public class KyberEncapsulationSpi extends KeyGeneratorSpi {
     
+    private KyberPublicKey remotePublicKey;
+
     @Override
     protected void engineInit(SecureRandom random) {
         throw new UnsupportedOperationException("Kyber Encapsulation fundamentally requires a PublicKey to initialize.");
@@ -25,8 +27,14 @@ public class KyberEncapsulationSpi extends KeyGeneratorSpi {
 
     @Override
     protected void engineInit(AlgorithmParameterSpec params, SecureRandom random) {
-        // Here we intercept the parameter spec containing the remote peer's PublicKey
-        // and prime the Rust NTT Engine via JNI for the Encapsulation operation.
+        if (params instanceof KyberParameterSpec) {
+            java.security.PublicKey pk = ((KyberParameterSpec) params).getPublicKey();
+            if (pk instanceof KyberPublicKey) {
+                this.remotePublicKey = (KyberPublicKey) pk;
+            }
+        } else if (params instanceof KyberPublicKey) {
+            this.remotePublicKey = (KyberPublicKey) params;
+        }
     }
 
     @Override
@@ -36,15 +44,31 @@ public class KyberEncapsulationSpi extends KeyGeneratorSpi {
 
     @Override
     protected SecretKey engineGenerateKey() {
-        // Will pipe down into our core-rust zeroized encapsulation method
-        return new SecretKey() {
-            public String getAlgorithm() { return "Kyber768"; }
-            public String getFormat() { return "RAW"; }
-            public byte[] getEncoded() {
-                byte[] mockOutput = new byte[32];
-                java.util.Arrays.fill(mockOutput, (byte) 42);
-                return mockOutput;
-            }
-        };
+        if (remotePublicKey == null) {
+            throw new IllegalStateException("Remote public key not set for encapsulation.");
+        }
+        
+        java.nio.ByteBuffer pkBuffer = java.nio.ByteBuffer.allocateDirect(1184);
+        byte[] pkBytes = remotePublicKey.getEncoded();
+        if (pkBytes != null) {
+            pkBuffer.put(pkBytes);
+            pkBuffer.flip();
+        }
+
+        java.nio.ByteBuffer ctBuffer = java.nio.ByteBuffer.allocateDirect(1088);
+        java.nio.ByteBuffer ssBuffer = java.nio.ByteBuffer.allocateDirect(32);
+
+        int status = com.obsidianq.ObsidianNativeBridge.encapsulateSecret(pkBuffer, ctBuffer, ssBuffer);
+        if (status != 0) {
+            throw new RuntimeException("NTT Encapsulation Failed");
+        }
+
+        byte[] ssBytes = new byte[32];
+        ssBuffer.get(ssBytes);
+        
+        byte[] ctBytes = new byte[1088];
+        ctBuffer.get(ctBytes);
+
+        return new KyberEncapsulatedSecret(ssBytes, ctBytes);
     }
 }

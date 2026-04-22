@@ -43,7 +43,7 @@ impl CryptoRng for NISTMockRng {}
 #[test]
 fn test_fips_203_kat_vector_2() {
     // 1. Ingest actual bytes from NIST's intermediate .rsp validation vectors
-    let d_seed = hex::decode("e3b9...").unwrap_or_default(); 
+    let d_seed = hex::decode("e3b9").unwrap_or_default(); 
     let mut rng = NISTMockRng::new(&d_seed);
 
     // 2. We inject this Deterministic RNG into the core ML-KEM Engine

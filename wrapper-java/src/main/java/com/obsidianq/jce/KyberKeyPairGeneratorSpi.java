@@ -49,7 +49,7 @@ public class KyberKeyPairGeneratorSpi extends KeyPairGeneratorSpi {
         ByteBuffer skBuffer = ByteBuffer.allocateDirect(PRIVATE_KEY_BYTES);
 
         // 2. Transmit pointers across the memory boundary via JNI into the Rust NTT Engine.
-        int status = ObsidianNativeBridge.generateKyberSecret(skBuffer, PRIVATE_KEY_BYTES); // Placeholder mapping
+        int status = ObsidianNativeBridge.generateKeyPair(pkBuffer, skBuffer);
         
         if (status != 0) {
             throw new RuntimeException("Fatal Cryptographic Error: Lattice mapping failed during NTT expansion.");

@@ -4,36 +4,25 @@ import java.nio.ByteBuffer;
 
 public class ObsidianNativeBridge {
     
-    // Load the native Rust dynamic library at runtime via our zero-dependency extractor
     static {
         com.obsidianq.util.NativeExtractor.loadLibrary(); 
     }
 
     /**
-     * Fills the provided direct ByteBuffer with a newly generated Kyber shared secret.
-     * By using a direct ByteBuffer, the JVM Garbage Collector is entirely bypassed.
-     * The OS memory is mapped directly to our Rust FFI boundary, preventing ghost copies
-     * of the AES key from existing in managed heap memory.
-     *
-     * @param buffer A DirectByteBuffer (off-heap memory) allocated by the caller.
-     * @param capacity The size of the expected buffer in bytes.
-     * @return 0 on success, error code otherwise.
+     * Key Generation Phase. Fills the pre-allocated direct byte buffers with
+     * the ML-KEM-768 public key (1184 bytes) and secret key (2400 bytes).
      */
-    public static native int generateKyberSecret(ByteBuffer buffer, int capacity);
-    
+    public static native int generateKeyPair(ByteBuffer pkBuffer, ByteBuffer skBuffer);
+
     /**
-     * Architectural Demonstration
+     * Encapsulation Phase. Takes the public key and generates a 1088-byte ciphertext
+     * along with the derived 32-byte shared secret.
      */
-    public static void secureMemoryDemo() {
-        // Allocate 32 bytes strictly OFF the Java managed heap
-        // This is the absolute memory safety requirement mapped to code.
-        ByteBuffer secureBuffer = ByteBuffer.allocateDirect(32);
-        
-        int result = generateKyberSecret(secureBuffer, 32);
-        
-        if (result == 0) {
-            // Secret now safely rests in off-heap memory awaiting cipher initialization.
-            System.out.println("Secure secret loaded directly from Rust into off-heap memory.");
-        }
-    }
+    public static native int encapsulateSecret(ByteBuffer pkBuffer, ByteBuffer ctBuffer, ByteBuffer ssBuffer);
+
+    /**
+     * Decapsulation Phase. Takes the ciphertext and secret key to unmap and
+     * derive the exact 32-byte shared secret originally created during encapsulation.
+     */
+    public static native int decapsulateSecret(ByteBuffer ctBuffer, ByteBuffer skBuffer, ByteBuffer ssBuffer);
 }

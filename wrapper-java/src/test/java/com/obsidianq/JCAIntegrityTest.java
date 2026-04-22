@@ -1,6 +1,7 @@
 package com.obsidianq;
 
 import com.obsidianq.jce.ObsidianQProvider;
+import com.obsidianq.jce.KyberParameterSpec;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -83,14 +84,12 @@ public class JCAIntegrityTest {
         ((javax.security.auth.Destroyable) aliceKeyPair.getPrivate()).destroy();
     }
 
-    // Dummy helper functions bridging the JCA output bounds
+    // Helper to bridge JCA boundaries for encapsulation output
     private static byte[] extractCiphertext(SecretKey keyObject) {
-         // In production, the SPI wraps the raw Kyber payload in a structured byte array
-         return new byte[1088]; // Mock Kyber768 Ciphertext size
-    }
-    
-    public static class KyberParameterSpec implements java.security.spec.AlgorithmParameterSpec {
-        public KyberParameterSpec(java.security.PublicKey pk) {}
+         if (keyObject instanceof com.obsidianq.jce.KyberEncapsulatedSecret) {
+             return ((com.obsidianq.jce.KyberEncapsulatedSecret) keyObject).getCiphertext();
+         }
+         throw new IllegalArgumentException("Key is not a KyberEncapsulatedSecret");
     }
     
     public static class KyberCiphertextKey implements java.security.Key {

@@ -13,31 +13,63 @@ import java.security.spec.AlgorithmParameterSpec;
  * and the network-provided Ciphertext, relying identically on NTT algebra.
  */
 public class KyberDecapsulationSpi extends KeyAgreementSpi {
-    
+    private KyberPrivateKey localPrivateKey;
+    private byte[] remoteCiphertext;
+
     @Override
     protected void engineInit(Key key, SecureRandom random) {
-        // Initializes the core logic utilizing the highly volatile PrivateKey.
-        // Memory wiping boundaries are strictly enforced here.
+        if (key instanceof KyberPrivateKey) {
+            this.localPrivateKey = (KyberPrivateKey) key;
+        } else {
+            throw new IllegalArgumentException("Key must be a KyberPrivateKey");
+        }
     }
 
     @Override
     protected void engineInit(Key key, AlgorithmParameterSpec params, SecureRandom random) {
-        // Overloads initialization allowing ciphertext integration directly.
+        engineInit(key, random);
     }
 
     @Override
     protected Key engineDoPhase(Key key, boolean lastPhase) {
-        // Ingesets the Ciphertext byte array structure from the remote peer.
+        if (!lastPhase) {
+            throw new IllegalStateException("Kyber is a KEM, doPhase must be called with lastPhase=true");
+        }
+        if (key != null && key.getEncoded() != null) {
+            this.remoteCiphertext = key.getEncoded();
+        } else {
+            throw new IllegalArgumentException("Invalid ciphertext key provided");
+        }
         return null;
     }
 
     @Override
     protected byte[] engineGenerateSecret() {
-        // Drops past the JNI string back into `kem.rs` to algebraically recover 
-        // the Shared Secret via the matching polynomial noise matrices.
-        byte[] mockOutput = new byte[32];
-        java.util.Arrays.fill(mockOutput, (byte) 42);
-        return mockOutput;
+        if (localPrivateKey == null || remoteCiphertext == null) {
+            throw new IllegalStateException("Decapsulation not fully initialized with PrivateKey and Ciphertext");
+        }
+
+        java.nio.ByteBuffer ctBuffer = java.nio.ByteBuffer.allocateDirect(1088);
+        ctBuffer.put(remoteCiphertext);
+        ctBuffer.flip();
+
+        java.nio.ByteBuffer skBuffer = java.nio.ByteBuffer.allocateDirect(2400);
+        byte[] skBytes = localPrivateKey.getEncoded();
+        if (skBytes != null) {
+            skBuffer.put(skBytes);
+            skBuffer.flip();
+        }
+
+        java.nio.ByteBuffer ssBuffer = java.nio.ByteBuffer.allocateDirect(32);
+
+        int status = com.obsidianq.ObsidianNativeBridge.decapsulateSecret(ctBuffer, skBuffer, ssBuffer);
+        if (status != 0) {
+            throw new RuntimeException("NTT Decapsulation Failed");
+        }
+
+        byte[] ssBytes = new byte[32];
+        ssBuffer.get(ssBytes);
+        return ssBytes;
     }
 
     @Override
