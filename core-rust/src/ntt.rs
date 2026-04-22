@@ -3,7 +3,7 @@
 use crate::reduce::{montgomery_reduce, barrett_reduce};
 
 /// Precomputed powers of the primitive root modulo 3329 (Truncated for stage logic)
-const ZETAS: [i16; 128] = [
+pub const ZETAS: [i16; 128] = [
     2285, 2586, 2560, 2221, 3277, 2339, 2824, 3043, 1698, 2697, 2157, 1690, 1640, 2405, 1494, 2197,
     1156, 1729,  114,  643, 2147, 1877, 2623, 1162, 2222, 1012, 1007, 2901, 2872,   47, 1845, 1269,
     1187, 2731, 2933, 2806, 2715, 1792,  676, 2656, 1481, 1032,  235,  260, 2097, 1673, 2307, 1993,

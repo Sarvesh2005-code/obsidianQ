@@ -2,7 +2,7 @@
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 use sha3::{Sha3_256, Sha3_512, Digest};
-use rand_core::{RngCore, OsRng};
+use rand_core::RngCore;
 
 // ML-KEM-768 Constants
 pub const KYBER_N: usize = 256;
@@ -29,13 +29,31 @@ pub fn generate_keypair<R: RngCore>(rng: &mut R) -> ([u8; KYBER_PUBLICKEYBYTES],
     let mut pk = [0u8; KYBER_PUBLICKEYBYTES];
     let mut sk = KyberSecretKey { sk: [0u8; KYBER_SECRETKEYBYTES] };
     
-    // Simulate the actual NTT and Matrix Generation Phase
-    rng.fill_bytes(&mut pk);
+    let mut d = [0u8; 32];
+    let mut z = [0u8; 32];
+    rng.fill_bytes(&mut d);
+    rng.fill_bytes(&mut z);
     
-    // Mock the SK layout for ML-KEM-768 where PK is embedded in SK at offset 1152
-    rng.fill_bytes(&mut sk.sk[0..1152]);
-    sk.sk[1152..2336].copy_from_slice(&pk);
-    rng.fill_bytes(&mut sk.sk[2336..2400]); // H(pk) and z
+    let mut hasher = Sha3_512::new();
+    hasher.update(&d);
+    let hash_res = hasher.finalize();
+    
+    let mut seed = [0u8; 32];
+    let mut noiseseed = [0u8; 32];
+    seed.copy_from_slice(&hash_res[0..32]);
+    noiseseed.copy_from_slice(&hash_res[32..64]);
+    
+    crate::indcpa::indcpa_keypair((&mut pk[0..crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES]).try_into().unwrap(), (&mut sk.sk[0..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES]).try_into().unwrap(), &seed, &noiseseed);
+    
+    // sk = sk || pk || H(pk) || z
+    sk.sk[crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES].copy_from_slice(&pk[0..crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES]);
+    
+    let mut hasher2 = Sha3_256::new();
+    hasher2.update(&pk[0..crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES]);
+    let hpk = hasher2.finalize();
+    
+    sk.sk[crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES + 32].copy_from_slice(&hpk);
+    sk.sk[crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES + 32..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES + 64].copy_from_slice(&z);
     
     (pk, sk)
 }
@@ -45,14 +63,39 @@ pub fn encapsulate_key<R: RngCore>(pk: &[u8; KYBER_PUBLICKEYBYTES], rng: &mut R)
     let mut ct = [0u8; KYBER_CIPHERTEXTBYTES];
     let mut secret = SharedSecret { key: [0; 32] };
     
-    rng.fill_bytes(&mut ct);
+    let mut m = [0u8; 32];
+    rng.fill_bytes(&mut m);
     
-    // Stage 3 constraint check: Shared Secret Derivation via SHA3-256
     let mut hasher = Sha3_256::new();
-    hasher.update(&ct);
-    hasher.update(&pk[..32]); // Bind the public key into the hash
-    let result = hasher.finalize();
-    secret.key.copy_from_slice(&result[..]);
+    hasher.update(&m);
+    let m = hasher.finalize();
+    let mut m_arr = [0u8; 32];
+    m_arr.copy_from_slice(&m);
+    
+    let mut hasher2 = Sha3_256::new();
+    hasher2.update(&pk[0..crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES]);
+    let hpk = hasher2.finalize();
+    
+    let mut hasher3 = Sha3_512::new();
+    hasher3.update(&m_arr);
+    hasher3.update(&hpk);
+    let kr = hasher3.finalize();
+    
+    let mut k = [0u8; 32];
+    let mut r = [0u8; 32];
+    k.copy_from_slice(&kr[0..32]);
+    r.copy_from_slice(&kr[32..64]);
+    
+    crate::indcpa::indcpa_enc((&mut ct[0..crate::indcpa::KYBER_INDCPA_BYTES]).try_into().unwrap(), &m_arr, (&pk[0..crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES]).try_into().unwrap(), &r);
+    
+    let mut hasher_kdf = Sha3_256::new();
+    hasher_kdf.update(&k);
+    let mut hasher_ct = Sha3_256::new();
+    hasher_ct.update(&ct);
+    hasher_kdf.update(&hasher_ct.finalize());
+    let ss = hasher_kdf.finalize();
+    
+    secret.key.copy_from_slice(&ss);
     
     (ct, secret)
 }
@@ -61,13 +104,51 @@ pub fn encapsulate_key<R: RngCore>(pk: &[u8; KYBER_PUBLICKEYBYTES], rng: &mut R)
 pub fn decapsulate_key(ct: &[u8; KYBER_CIPHERTEXTBYTES], sk: &KyberSecretKey) -> SharedSecret {
     let mut secret = SharedSecret { key: [0; 32] };
     
-    // Simulate the INTT unmapping and comparison
-    let mut hasher = Sha3_256::new();
-    hasher.update(ct);
-    // Use the PK embedded inside the SK
-    hasher.update(&sk.sk[1152..1152+32]); 
-    let result = hasher.finalize();
-    secret.key.copy_from_slice(&result[..]);
+    let mut m_prime = [0u8; 32];
+    crate::indcpa::indcpa_dec(&mut m_prime, (&ct[0..crate::indcpa::KYBER_INDCPA_BYTES]).try_into().unwrap(), (&sk.sk[0..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES]).try_into().unwrap());
+    
+    let mut hpk = [0u8; 32];
+    hpk.copy_from_slice(&sk.sk[crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES + 32]);
+    
+    let mut hasher_kr = Sha3_512::new();
+    hasher_kr.update(&m_prime);
+    hasher_kr.update(&hpk);
+    let kr = hasher_kr.finalize();
+    
+    let mut k_prime = [0u8; 32];
+    let mut r_prime = [0u8; 32];
+    k_prime.copy_from_slice(&kr[0..32]);
+    r_prime.copy_from_slice(&kr[32..64]);
+    
+    let mut ct_prime = [0u8; KYBER_CIPHERTEXTBYTES];
+    let mut pk = [0u8; crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES];
+    pk.copy_from_slice(&sk.sk[crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES]);
+    
+    crate::indcpa::indcpa_enc((&mut ct_prime[0..crate::indcpa::KYBER_INDCPA_BYTES]).try_into().unwrap(), &m_prime, &pk, &r_prime);
+    
+    let mut fail: u8 = 0;
+    for i in 0..crate::indcpa::KYBER_INDCPA_BYTES {
+        fail |= ct[i] ^ ct_prime[i];
+    }
+    
+    let mut z = [0u8; 32];
+    z.copy_from_slice(&sk.sk[crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES + 32..crate::indcpa::KYBER_INDCPA_SECRETKEYBYTES + crate::indcpa::KYBER_INDCPA_PUBLICKEYBYTES + 64]);
+    
+    let fail_mask = fail.wrapping_sub(1); // 0xff if fail == 0 (match), 0x00 otherwise
+    
+    let mut k_final = [0u8; 32];
+    for i in 0..32 {
+        k_final[i] = (k_prime[i] & fail_mask) | (z[i] & !fail_mask);
+    }
+    
+    let mut hasher_kdf = Sha3_256::new();
+    hasher_kdf.update(&k_final);
+    let mut hasher_ct = Sha3_256::new();
+    hasher_ct.update(&ct);
+    hasher_kdf.update(&hasher_ct.finalize());
+    let ss = hasher_kdf.finalize();
+    
+    secret.key.copy_from_slice(&ss);
     
     secret
 }

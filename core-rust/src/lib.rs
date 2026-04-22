@@ -1,6 +1,12 @@
 pub mod kem;
 pub mod ntt;
 pub mod reduce;
+pub mod cbd;
+pub mod poly;
+pub mod polyvec;
+pub mod symmetric;
+pub mod pack;
+pub mod indcpa;
 
 use jni::objects::{JByteBuffer, JClass};
 use jni::sys::jint;
