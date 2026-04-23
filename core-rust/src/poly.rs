@@ -59,7 +59,9 @@ impl Poly {
         for i in 0..32 {
             let mut val = 0;
             for j in 0..8 {
-                let mut t = (self.coeffs[8 * i + j] as i32 * 2 + KYBER_Q as i32 / 2) / KYBER_Q as i32;
+                let mut u = self.coeffs[8 * i + j];
+                u += (u >> 15) & crate::reduce::KYBER_Q;
+                let mut t = (u as i32 * 2 + crate::reduce::KYBER_Q as i32 / 2) / crate::reduce::KYBER_Q as i32;
                 t &= 1;
                 val |= t << j;
             }
@@ -87,4 +89,14 @@ fn basemul(a: &[i16], b: &[i16], zeta: i16) -> (i16, i16) {
     let r1 = r1 + montgomery_reduce(a[1] as i32 * b[0] as i32);
     
     (r0, r1)
+}
+
+impl Poly {
+    /// In-place conversion to Montgomery domain.
+    pub fn tomont(&mut self) {
+        let f = 1353; // 2^32 % 3329 = R^2 % Q
+        for i in 0..256 {
+            self.coeffs[i] = montgomery_reduce((self.coeffs[i] as i32) * f);
+        }
+    }
 }

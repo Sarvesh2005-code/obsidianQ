@@ -16,12 +16,13 @@ pub fn montgomery_reduce(a: i32) -> i16 {
     res as i16
 }
 
-/// Barrett reduction reduces an integer loosely modulo q in constant-time.
+/// Barrett reduction reduces a 16-bit integer to centered representative mod q.
+/// Exact port of pq-crystals/kyber reference.
 #[inline(always)]
 pub fn barrett_reduce(a: i16) -> i16 {
-    // 2^26 / q
-    let v = ((1i32 << 26) / (KYBER_Q as i32) + 1) as i16;
-    let mut t = (a as i32).wrapping_mul(v as i32) >> 26;
-    t = t.wrapping_mul(KYBER_Q as i32);
-    a.wrapping_sub(t as i16)
+    // v = ((1<<26) + Q/2) / Q = 20159
+    let v: i16 = 20159;
+    let mut t = ((v as i32) * (a as i32) + (1 << 25)) >> 26;
+    t *= KYBER_Q as i32;
+    a - (t as i16)
 }

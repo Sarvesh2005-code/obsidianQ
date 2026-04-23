@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/Sarvesh2005-code/obsidianQ"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 zeroize = { version = "1.8", features = ["zeroize_derive"] }

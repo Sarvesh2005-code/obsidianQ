@@ -5,15 +5,19 @@ use crate::polyvec::PolyVec;
 use crate::kem::{KYBER_K, KYBER_N};
 
 pub const KYBER_POLYBYTES: usize = 384;
-pub const KYBER_POLYVECBYTES: usize = KYBER_K * 320;
+pub const KYBER_POLYVECBYTES: usize = KYBER_K * KYBER_POLYBYTES;
 pub const KYBER_POLYCOMPRESSEDBYTES: usize = 128; // For K=3 (ML-KEM-768), du=10, dv=4
 pub const KYBER_POLYVECCOMPRESSEDBYTES: usize = KYBER_K * 320;
 
 /// Serialize polynomial to 384 bytes
 pub fn poly_tobytes(r: &mut [u8; KYBER_POLYBYTES], a: &Poly) {
     for i in 0..(KYBER_N / 2) {
-        let t0 = a.coeffs[2 * i] as u16;
-        let t1 = a.coeffs[2 * i + 1] as u16;
+        let mut u0 = crate::reduce::barrett_reduce(a.coeffs[2 * i]);
+        u0 += (u0 >> 15) & crate::reduce::KYBER_Q;
+        let t0 = u0 as u16;
+        let mut u1 = crate::reduce::barrett_reduce(a.coeffs[2 * i + 1]);
+        u1 += (u1 >> 15) & crate::reduce::KYBER_Q;
+        let t1 = u1 as u16;
         r[3 * i] = (t0 & 0xff) as u8;
         r[3 * i + 1] = ((t0 >> 8) | ((t1 & 0x0f) << 4)) as u8;
         r[3 * i + 2] = (t1 >> 4) as u8;
@@ -28,8 +32,25 @@ pub fn poly_frombytes(r: &mut Poly, a: &[u8; KYBER_POLYBYTES]) {
     }
 }
 
-/// Serialize polyvec to KYBER_POLYVECBYTES bytes
+/// Serialize polyvec to KYBER_POLYVECBYTES bytes (uncompressed)
 pub fn polyvec_tobytes(r: &mut [u8; KYBER_POLYVECBYTES], a: &PolyVec) {
+    for i in 0..KYBER_K {
+        let mut tmp = [0u8; KYBER_POLYBYTES];
+        poly_tobytes(&mut tmp, &a.vec[i]);
+        r[i * KYBER_POLYBYTES..(i + 1) * KYBER_POLYBYTES].copy_from_slice(&tmp);
+    }
+}
+
+/// Deserialize KYBER_POLYVECBYTES bytes to polyvec (uncompressed)
+pub fn polyvec_frombytes(r: &mut PolyVec, a: &[u8; KYBER_POLYVECBYTES]) {
+    for i in 0..KYBER_K {
+        let mut tmp = [0u8; KYBER_POLYBYTES];
+        tmp.copy_from_slice(&a[i * KYBER_POLYBYTES..(i + 1) * KYBER_POLYBYTES]);
+        poly_frombytes(&mut r.vec[i], &tmp);
+    }
+}
+
+pub fn polyvec_compress_10(r: &mut [u8; KYBER_POLYVECCOMPRESSEDBYTES], a: &PolyVec) {
     for i in 0..KYBER_K {
         let mut tmp = [0u8; 320];
         poly_compress_10(&mut tmp, &a.vec[i]);
@@ -37,8 +58,7 @@ pub fn polyvec_tobytes(r: &mut [u8; KYBER_POLYVECBYTES], a: &PolyVec) {
     }
 }
 
-/// Deserialize KYBER_POLYVECBYTES bytes to polyvec
-pub fn polyvec_frombytes(r: &mut PolyVec, a: &[u8; KYBER_POLYVECBYTES]) {
+pub fn polyvec_decompress_10(r: &mut PolyVec, a: &[u8; KYBER_POLYVECCOMPRESSEDBYTES]) {
     for i in 0..KYBER_K {
         let mut tmp = [0u8; 320];
         tmp.copy_from_slice(&a[i * 320..(i + 1) * 320]);

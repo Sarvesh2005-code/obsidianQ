@@ -1,26 +1,36 @@
 //! Number Theoretic Transform (NTT) for Kyber polynomial multiplication
+//! Exact port of pq-crystals/kyber reference implementation (ntt.c)
 
 use crate::reduce::{montgomery_reduce, barrett_reduce};
 
-/// Precomputed powers of the primitive root modulo 3329 (Truncated for stage logic)
+/// Precomputed zeta constants in Montgomery domain.
+/// Exact values from pq-crystals/kyber reference (signed, centered).
 pub const ZETAS: [i16; 128] = [
-    2285, 2586, 2560, 2221, 3277, 2339, 2824, 3043, 1698, 2697, 2157, 1690, 1640, 2405, 1494, 2197,
-    1156, 1729,  114,  643, 2147, 1877, 2623, 1162, 2222, 1012, 1007, 2901, 2872,   47, 1845, 1269,
-    1187, 2731, 2933, 2806, 2715, 1792,  676, 2656, 1481, 1032,  235,  260, 2097, 1673, 2307, 1993,
-    2669, 2169, 2275, 1667, 2334,  930, 2984, 1827, 2696,  310, 1373, 2717, 1491,  238, 1793,  359,
-    1198, 2521, 1342, 1870, 1079, 1435, 1957, 1092,  604, 3267,  887, 2982, 3139, 1081, 2212, 2673,
-    2744, 2068, 1840, 2277,  348,  448, 1709,   34,  291, 1691, 2638,  413, 2278,  349,  578, 1363,
-    1113,  927,  671,  965,  262, 3244,  978,  204, 1168, 1509,  637,  306, 1856,  974, 1164, 1618,
-    2279, 1078,  335,  696, 2661, 3105, 1121, 1025, 2750, 2865, 2364, 2320, 1656, 1332, 1404, 2220,
+  -1044,  -758,  -359, -1517,  1493,  1422,   287,   202,
+   -171,   622,  1577,   182,   962, -1202, -1474,  1468,
+    573, -1325,   264,   383,  -829,  1458, -1602,  -130,
+   -681,  1017,   732,   608, -1542,   411,  -205, -1571,
+   1223,   652,  -552,  1015, -1293,  1491,  -282, -1544,
+    516,    -8,  -320,  -666, -1618, -1162,   126,  1469,
+   -853,   -90,  -271,   830,   107, -1421,  -247,  -951,
+   -398,   961, -1508,  -725,   448, -1065,   677, -1275,
+  -1103,   430,   555,   843, -1251,   871,  1550,   105,
+    422,   587,   177,  -235,  -291,  -460,  1574,  1653,
+   -246,   778,  1159,  -147,  -777,  1483,  -602,  1119,
+  -1590,   644,  -872,   349,   418,   329,  -156,   -75,
+    817,  1097,   603,   610,  1322, -1285, -1465,   384,
+  -1215,  -136,  1218, -1335,  -874,   220, -1187, -1659,
+  -1185, -1530, -1278,   794, -1510,  -854,  -870,   478,
+   -108,  -308,   996,   991,   958, -1460,  1522,  1628,
 ];
 
-/// Computes the in-place Number Theoretic Transform (NTT)
-/// Operates strictly in constant-time utilizing modular reducers without branching.
+/// Computes the in-place Number Theoretic Transform (NTT).
+/// Input in standard order, output in bit-reversed order.
+/// Operates in constant-time — no branching on secret data.
 pub fn ntt(poly: &mut [i16; 256]) {
     let mut len = 128;
-    let mut k = 1;
+    let mut k: usize = 1;
     
-    // Constant time memory iteration. No early exits. No secret-dependent indexing.
     while len >= 2 {
         let mut start = 0;
         while start < 256 {
@@ -28,7 +38,6 @@ pub fn ntt(poly: &mut [i16; 256]) {
             k += 1;
             
             for j in start..(start + len) {
-                // The Butterfly Operation - The core of NTT polynomial scaling
                 let t = montgomery_reduce((zeta as i32) * (poly[j + len] as i32));
                 poly[j + len] = poly[j] - t;
                 poly[j] = poly[j] + t;
@@ -39,17 +48,17 @@ pub fn ntt(poly: &mut [i16; 256]) {
     }
 }
 
-/// Computes the in-place Inverse Number Theoretic Transform (INTT)
-/// Used exclusively in the decapsulation phase to unmap the shared secret.
+/// Computes the in-place Inverse NTT and multiplies by Montgomery factor 2^16.
+/// Input in bit-reversed order, output in standard order.
 pub fn inv_ntt(poly: &mut [i16; 256]) {
     let mut len = 2;
-    let mut k = 127;
+    let mut k: usize = 127;
     
     while len <= 128 {
         let mut start = 0;
         while start < 256 {
             let zeta = ZETAS[k];
-            k -= 1;
+            k = k.wrapping_sub(1);
             
             for j in start..(start + len) {
                 let t = poly[j];
@@ -62,8 +71,8 @@ pub fn inv_ntt(poly: &mut [i16; 256]) {
         len <<= 1;
     }
     
-    // Multiply by 128^-1 mod 3329
-    let f: i32 = 3303; 
+    // Final scaling: multiply by mont^2/128 = 1441
+    let f: i32 = 1441;
     for j in 0..256 {
         poly[j] = montgomery_reduce((poly[j] as i32) * f);
     }

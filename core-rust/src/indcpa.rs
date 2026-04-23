@@ -4,22 +4,21 @@ use crate::kem::{KYBER_K, KYBER_N};
 use crate::poly::Poly;
 use crate::polyvec::PolyVec;
 use crate::symmetric::{prf, xof_absorb_squeeze};
-use crate::pack::{polyvec_tobytes, polyvec_frombytes, poly_tobytes, poly_frombytes, KYBER_POLYVECBYTES, KYBER_POLYVECCOMPRESSEDBYTES};
+use crate::pack::{polyvec_tobytes, polyvec_frombytes, KYBER_POLYVECBYTES, KYBER_POLYVECCOMPRESSEDBYTES};
 use crate::cbd::cbd2;
 
 pub const KYBER_INDCPA_PUBLICKEYBYTES: usize = KYBER_POLYVECBYTES + 32;
 pub const KYBER_INDCPA_SECRETKEYBYTES: usize = KYBER_POLYVECBYTES;
 pub const KYBER_INDCPA_BYTES: usize = KYBER_POLYVECCOMPRESSEDBYTES + 128; // 1088
 
-/// Generate matrix A
+/// Generate matrix A from seed via rejection sampling.
 fn gen_matrix(a: &mut [PolyVec; KYBER_K], seed: &[u8; 32], transposed: bool) {
     for i in 0..KYBER_K {
         for j in 0..KYBER_K {
             let (x, y) = if transposed { (i as u8, j as u8) } else { (j as u8, i as u8) };
             let buf = xof_absorb_squeeze(seed, x, y, 3 * KYBER_N); // get enough bytes
             
-            // Rejection sampling is complex, we use a simplified version for demonstration
-            // Proper ML-KEM requires Keccak-128 rejection sampling per NIST spec.
+            // Rejection sampling: parse 12-bit values, reject >= Q
             let mut ctr = 0;
             let mut pos = 0;
             while ctr < KYBER_N && pos + 3 <= buf.len() {
@@ -57,20 +56,19 @@ pub fn indcpa_keypair(pk: &mut [u8; KYBER_INDCPA_PUBLICKEYBYTES], sk: &mut [u8; 
         let prf_out = prf(noiseseed, i as u8, 128);
         cbd2(&prf_out, &mut skpv.vec[i].coeffs);
     }
+    skpv.ntt();
     
     // Sample error vector e
     for i in 0..KYBER_K {
         let prf_out = prf(noiseseed, (i + KYBER_K) as u8, 128);
         cbd2(&prf_out, &mut e.vec[i].coeffs);
     }
-    
-    skpv.ntt();
     e.ntt();
     
-    // Matrix-vector multiplication A * s
+    // pk = A * s + e (all in NTT domain)
     for i in 0..KYBER_K {
         PolyVec::basemul_acc_montgomery(&mut pkpv.vec[i], &a[i], &skpv);
-        pkpv.vec[i].inv_ntt();
+        pkpv.vec[i].tomont();
         pkpv.vec[i].add(&pkpv.vec[i].clone(), &e.vec[i]);
         pkpv.vec[i].reduce();
     }
@@ -80,7 +78,7 @@ pub fn indcpa_keypair(pk: &mut [u8; KYBER_INDCPA_PUBLICKEYBYTES], sk: &mut [u8; 
     polyvec_tobytes(&mut sk_bytes, &skpv);
     sk.copy_from_slice(&sk_bytes);
     
-    // Pack pk
+    // Pack pk = (pkpv || seed)
     let mut pk_bytes = [0u8; KYBER_POLYVECBYTES];
     polyvec_tobytes(&mut pk_bytes, &pkpv);
     pk[0..KYBER_POLYVECBYTES].copy_from_slice(&pk_bytes);
@@ -106,6 +104,7 @@ pub fn indcpa_enc(c: &mut [u8; KYBER_INDCPA_BYTES], m: &[u8; 32], pk: &[u8; KYBE
     
     gen_matrix(&mut a, &seed, true);
     
+    // Sample vectors sp, ep, epp
     for i in 0..KYBER_K {
         let prf_out = prf(coins, i as u8, 128);
         cbd2(&prf_out, &mut sp.vec[i].coeffs);
@@ -121,6 +120,7 @@ pub fn indcpa_enc(c: &mut [u8; KYBER_INDCPA_BYTES], m: &[u8; 32], pk: &[u8; KYBE
     
     sp.ntt();
     
+    // b = A^T * sp + ep
     for i in 0..KYBER_K {
         PolyVec::basemul_acc_montgomery(&mut b.vec[i], &a[i], &sp);
         b.vec[i].inv_ntt();
@@ -128,6 +128,7 @@ pub fn indcpa_enc(c: &mut [u8; KYBER_INDCPA_BYTES], m: &[u8; 32], pk: &[u8; KYBE
         b.vec[i].reduce();
     }
     
+    // v = pk^T * sp + epp + encode(m)
     PolyVec::basemul_acc_montgomery(&mut v, &pkpv, &sp);
     v.inv_ntt();
     v.add(&v.clone(), &epp);
@@ -136,13 +137,14 @@ pub fn indcpa_enc(c: &mut [u8; KYBER_INDCPA_BYTES], m: &[u8; 32], pk: &[u8; KYBE
     v.add(&v.clone(), &k);
     v.reduce();
     
-    let mut b_bytes = [0u8; KYBER_POLYVECBYTES];
-    polyvec_tobytes(&mut b_bytes, &b);
-    c[0..KYBER_POLYVECBYTES].copy_from_slice(&b_bytes);
+    // Compress and pack ciphertext
+    let mut b_bytes = [0u8; crate::pack::KYBER_POLYVECCOMPRESSEDBYTES];
+    crate::pack::polyvec_compress_10(&mut b_bytes, &b);
+    c[0..crate::pack::KYBER_POLYVECCOMPRESSEDBYTES].copy_from_slice(&b_bytes);
     
-    let mut v_bytes = [0u8; crate::pack::KYBER_POLYBYTES];
-    poly_tobytes(&mut v_bytes, &v);
-    c[KYBER_POLYVECBYTES..KYBER_POLYVECBYTES + 128].copy_from_slice(&v_bytes[0..128]); // Note: In full ML-KEM this requires 4-bit compression
+    let mut v_bytes = [0u8; 128];
+    crate::pack::poly_compress_4(&mut v_bytes, &v);
+    c[crate::pack::KYBER_POLYVECCOMPRESSEDBYTES..crate::pack::KYBER_POLYVECCOMPRESSEDBYTES + 128].copy_from_slice(&v_bytes);
 }
 
 pub fn indcpa_dec(m: &mut [u8; 32], c: &[u8; KYBER_INDCPA_BYTES], sk: &[u8; KYBER_INDCPA_SECRETKEYBYTES]) {
@@ -151,24 +153,27 @@ pub fn indcpa_dec(m: &mut [u8; 32], c: &[u8; KYBER_INDCPA_BYTES], sk: &[u8; KYBE
     let mut v = Poly::new();
     let mut mp = Poly::new();
     
-    let mut b_bytes = [0u8; KYBER_POLYVECBYTES];
-    b_bytes.copy_from_slice(&c[0..KYBER_POLYVECBYTES]);
-    polyvec_frombytes(&mut b, &b_bytes);
+    // Decompress b from ciphertext
+    let mut b_bytes = [0u8; crate::pack::KYBER_POLYVECCOMPRESSEDBYTES];
+    b_bytes.copy_from_slice(&c[0..crate::pack::KYBER_POLYVECCOMPRESSEDBYTES]);
+    crate::pack::polyvec_decompress_10(&mut b, &b_bytes);
     
+    // Deserialize secret key
     let mut sk_bytes = [0u8; KYBER_POLYVECBYTES];
     sk_bytes.copy_from_slice(&sk[0..KYBER_POLYVECBYTES]);
     polyvec_frombytes(&mut skpv, &sk_bytes);
     
-    let mut v_bytes = [0u8; crate::pack::KYBER_POLYBYTES];
-    v_bytes[0..128].copy_from_slice(&c[KYBER_POLYVECBYTES..KYBER_POLYVECBYTES + 128]);
-    poly_frombytes(&mut v, &v_bytes);
+    // Decompress v from ciphertext
+    let mut v_bytes = [0u8; 128];
+    v_bytes.copy_from_slice(&c[crate::pack::KYBER_POLYVECCOMPRESSEDBYTES..crate::pack::KYBER_POLYVECCOMPRESSEDBYTES + 128]);
+    crate::pack::poly_decompress_4(&mut v, &v_bytes);
     
+    // mp = b^T * s (in NTT domain, then INTT)
     b.ntt();
-    skpv.ntt();
-    
     PolyVec::basemul_acc_montgomery(&mut mp, &b, &skpv);
     mp.inv_ntt();
     
+    // m' = v - mp
     v.sub(&v.clone(), &mp);
     v.reduce();
     
