@@ -19,6 +19,8 @@ rand_core = { version = "0.6", features = ["getrandom"] }
 hex = "0.4"
 criterion = "0.5"
 rand_core = { version = "0.6", features = ["getrandom"] }
+dudect-bencher = "0.7.0"
+rand_chacha = "0.10.0"
 
 [[bench]]
 name = "dudect_bench"

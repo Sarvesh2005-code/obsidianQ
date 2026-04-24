@@ -1,8 +1,8 @@
 use rand_core::{RngCore, CryptoRng, Error};
+use obsidian_core::kem::{generate_keypair, encapsulate_key, decapsulate_key};
 
 /// A completely deterministic Mock RNG engineered strictly for injecting
-/// NIST FIPS 203 Known Answer Test (KAT) seeds to mathematically verify
-/// output tensors against the target algorithms.
+/// known seeds to mathematically verify output tensors.
 pub struct NISTMockRng {
     pub seed_buffer: Vec<u8>,
     pub position: usize,
@@ -17,8 +17,6 @@ impl NISTMockRng {
     }
 }
 
-// Emulating the RngCore trait allows us to slip this mock rng directly
-// into the underlying Kyber generation modules that ordinarily request `OsRng`.
 impl RngCore for NISTMockRng {
     fn next_u32(&mut self) -> u32 { 0 }
     fn next_u64(&mut self) -> u64 { 0 }
@@ -26,7 +24,12 @@ impl RngCore for NISTMockRng {
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         let len = dest.len();
         if self.position + len > self.seed_buffer.len() {
-            panic!("NIST KAT Vector Exhausted - Sequence out of bounds.");
+            // Loop the seed if exhausted (just for deterministic testing)
+            for i in 0..len {
+                dest[i] = self.seed_buffer[(self.position + i) % self.seed_buffer.len()];
+            }
+            self.position += len;
+            return;
         }
         dest.copy_from_slice(&self.seed_buffer[self.position..self.position + len]);
         self.position += len;
@@ -41,15 +44,33 @@ impl RngCore for NISTMockRng {
 impl CryptoRng for NISTMockRng {}
 
 #[test]
-fn test_fips_203_kat_vector_2() {
-    // 1. Ingest actual bytes from NIST's intermediate .rsp validation vectors
-    let d_seed = hex::decode("e3b9").unwrap_or_default(); 
-    let mut rng = NISTMockRng::new(&d_seed);
+fn test_roundtrip_deterministic() {
+    let seed = [0x42; 128]; // Arbitrary fixed seed for deterministic behavior
+    let mut rng = NISTMockRng::new(&seed);
 
-    // 2. We inject this Deterministic RNG into the core ML-KEM Engine
-    // (Pseudocode integration assuming core architecture accepts `<R: RngCore>`)
-    // let result = encapsulate_key_with_rng(&mut rng);
-    
-    // 3. Mathematical mapping assertion
-    // assert_eq!(result.shared_secret, hex::decode("... expected string ...").unwrap());
+    // Key generation
+    let (pk, sk) = generate_keypair(&mut rng);
+
+    // Encapsulation
+    let (ct, ss_enc) = encapsulate_key(&pk, &mut rng);
+
+    // Decapsulation
+    let ss_dec = decapsulate_key(&ct, &sk);
+
+    // Shared secrets must match
+    assert_eq!(ss_enc.key, ss_dec.key, "Encapsulated and decapsulated secrets must match");
+}
+
+#[test]
+fn test_roundtrip_random() {
+    use rand_core::OsRng;
+    let mut rng = OsRng;
+
+    for _ in 0..10 {
+        let (pk, sk) = generate_keypair(&mut rng);
+        let (ct, ss_enc) = encapsulate_key(&pk, &mut rng);
+        let ss_dec = decapsulate_key(&ct, &sk);
+        
+        assert_eq!(ss_enc.key, ss_dec.key, "Shared secrets must match with random seeds");
+    }
 }
