@@ -119,6 +119,16 @@ Benchmarks comparing ObsidianQ against pure-Java implementations on a typical de
 
 ### Maven (via JitPack)
 
+> [!WARNING]
+> **JitPack Limitations (Linux Only Builds)**
+> JitPack builds libraries inside Ubuntu Linux containers. This means that when JitPack compiles ObsidianQ from source, it will *only* compile the Linux Native Library (`libobsidian_core.so`). 
+> 
+> If you are developing on **Windows** or **macOS** and try to run the JitPack-provided dependency, you will get an `UnsatisfiedLinkError` because the `.dll` or `.dylib` will be missing from the packaged JAR.
+>
+> **How to fix this on Windows/Mac:**
+> 1. We highly recommend downloading the pre-compiled `obsidianq-sdk-1.0.0.jar` directly from the [GitHub Releases page](https://github.com/Sarvesh2005-code/obsidianQ/releases). The pre-compiled releases are built via GitHub Actions and contain the native libraries for all three major operating systems (Windows `.dll`, Mac `.dylib`, Linux `.so`). You can manually add this JAR to your project's build path.
+> 2. Alternatively, you can [Build From Source](#build-from-source) directly on your machine.
+
 Add the JitPack repository to your `pom.xml`:
 ```xml
 <repositories>

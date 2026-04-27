@@ -25,4 +25,11 @@ public class ObsidianNativeBridge {
      * derive the exact 32-byte shared secret originally created during encapsulation.
      */
     public static native int decapsulateSecret(ByteBuffer ctBuffer, ByteBuffer skBuffer, ByteBuffer ssBuffer);
+
+    /**
+     * Hardening Phase. Securely zeroizes a DirectByteBuffer from the native side
+     * to ensure sensitive key material is immediately purged from RAM without
+     * waiting for Garbage Collection or OS reclamation.
+     */
+    public static native void zeroizeBuffer(ByteBuffer buffer);
 }

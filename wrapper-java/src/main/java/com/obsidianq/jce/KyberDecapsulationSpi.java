@@ -49,27 +49,37 @@ public class KyberDecapsulationSpi extends KeyAgreementSpi {
             throw new IllegalStateException("Decapsulation not fully initialized with PrivateKey and Ciphertext");
         }
 
-        java.nio.ByteBuffer ctBuffer = java.nio.ByteBuffer.allocateDirect(1088);
-        ctBuffer.put(remoteCiphertext);
-        ctBuffer.flip();
+        java.nio.ByteBuffer ctBuffer = null;
+        java.nio.ByteBuffer skBuffer = null;
+        java.nio.ByteBuffer ssBuffer = null;
 
-        java.nio.ByteBuffer skBuffer = java.nio.ByteBuffer.allocateDirect(2400);
-        byte[] skBytes = localPrivateKey.getRawBytes();
-        if (skBytes != null) {
-            skBuffer.put(skBytes);
-            skBuffer.flip();
+        try {
+            ctBuffer = java.nio.ByteBuffer.allocateDirect(1088);
+            ctBuffer.put(remoteCiphertext);
+            ctBuffer.flip();
+
+            skBuffer = java.nio.ByteBuffer.allocateDirect(2400);
+            byte[] skBytes = localPrivateKey.getRawBytes();
+            if (skBytes != null) {
+                skBuffer.put(skBytes);
+                skBuffer.flip();
+            }
+
+            ssBuffer = java.nio.ByteBuffer.allocateDirect(32);
+
+            int status = com.obsidianq.ObsidianNativeBridge.decapsulateSecret(ctBuffer, skBuffer, ssBuffer);
+            if (status != 0) {
+                throw new RuntimeException("NTT Decapsulation Failed");
+            }
+
+            byte[] ssBytes = new byte[32];
+            ssBuffer.get(ssBytes);
+            return ssBytes;
+        } finally {
+            if (ctBuffer != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ctBuffer);
+            if (skBuffer != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(skBuffer);
+            if (ssBuffer != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ssBuffer);
         }
-
-        java.nio.ByteBuffer ssBuffer = java.nio.ByteBuffer.allocateDirect(32);
-
-        int status = com.obsidianq.ObsidianNativeBridge.decapsulateSecret(ctBuffer, skBuffer, ssBuffer);
-        if (status != 0) {
-            throw new RuntimeException("NTT Decapsulation Failed");
-        }
-
-        byte[] ssBytes = new byte[32];
-        ssBuffer.get(ssBytes);
-        return ssBytes;
     }
 
     @Override

@@ -3,7 +3,7 @@
 use crate::kem::{KYBER_K, KYBER_N};
 use crate::poly::Poly;
 use crate::polyvec::PolyVec;
-use crate::symmetric::{prf, xof_absorb_squeeze};
+use crate::symmetric::{prf, xof_state, XofReader};
 use crate::pack::{polyvec_tobytes, polyvec_frombytes, KYBER_POLYVECBYTES, KYBER_POLYVECCOMPRESSEDBYTES};
 use crate::cbd::cbd2;
 
@@ -16,17 +16,15 @@ fn gen_matrix(a: &mut [PolyVec; KYBER_K], seed: &[u8; 32], transposed: bool) {
     for i in 0..KYBER_K {
         for j in 0..KYBER_K {
             let (x, y) = if transposed { (i as u8, j as u8) } else { (j as u8, i as u8) };
-            let buf = xof_absorb_squeeze(seed, x, y, 3 * KYBER_N); // get enough bytes
+            let mut xof = xof_state(seed, x, y);
             
-            // Rejection sampling: parse 12-bit values, reject >= Q
             let mut ctr = 0;
-            let mut pos = 0;
-            while ctr < KYBER_N && pos + 3 <= buf.len() {
-                let d1 = buf[pos] as u16;
-                let d2 = buf[pos + 1] as u16;
-                let d3 = buf[pos + 2] as u16;
-                let d1 = d1 | ((d2 & 0x0f) << 8);
-                let d2 = (d2 >> 4) | ((d3 & 0xff) << 4);
+            let mut buf = [0u8; 3];
+            while ctr < KYBER_N {
+                xof.read(&mut buf);
+                
+                let d1 = buf[0] as u16 | ((buf[1] as u16 & 0x0f) << 8);
+                let d2 = (buf[1] as u16 >> 4) | ((buf[2] as u16 & 0xff) << 4);
 
                 if d1 < crate::reduce::KYBER_Q as u16 {
                     a[i].vec[j].coeffs[ctr] = d1 as i16;
@@ -36,7 +34,6 @@ fn gen_matrix(a: &mut [PolyVec; KYBER_K], seed: &[u8; 32], transposed: bool) {
                     a[i].vec[j].coeffs[ctr] = d2 as i16;
                     ctr += 1;
                 }
-                pos += 3;
             }
         }
     }

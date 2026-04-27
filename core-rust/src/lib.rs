@@ -112,3 +112,22 @@ pub extern "system" fn Java_com_obsidianq_ObsidianNativeBridge_decapsulateSecret
 
     result.unwrap_or(-2)
 }
+
+// Native FFI boundary for Hardening (Zeroizing buffers)
+#[no_mangle]
+pub extern "system" fn Java_com_obsidianq_ObsidianNativeBridge_zeroizeBuffer(
+    env: JNIEnv,
+    _class: JClass,
+    buffer: JByteBuffer,
+) {
+    let _ = catch_unwind(AssertUnwindSafe(|| {
+        if let Ok(ptr) = env.get_direct_buffer_address(&buffer) {
+            if let Ok(capacity) = env.get_direct_buffer_capacity(&buffer) {
+                if !ptr.is_null() && capacity > 0 {
+                    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, capacity) };
+                    zeroize::Zeroize::zeroize(slice);
+                }
+            }
+        }
+    }));
+}

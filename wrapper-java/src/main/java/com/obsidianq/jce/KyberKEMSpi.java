@@ -73,42 +73,52 @@ public final class KyberKEMSpi implements KEMSpi {
         @Override
         public javax.crypto.KEM.Encapsulated engineEncapsulate(int from, int to, String algorithm) {
             // Allocate off-heap buffers for zero-copy native interaction
-            ByteBuffer pkBuf = ByteBuffer.allocateDirect(PK_BYTES);
-            ByteBuffer ctBuf = ByteBuffer.allocateDirect(CT_BYTES);
-            ByteBuffer ssBuf = ByteBuffer.allocateDirect(SS_BYTES);
+            ByteBuffer pkBuf = null;
+            ByteBuffer ctBuf = null;
+            ByteBuffer ssBuf = null;
+            
+            try {
+                pkBuf = ByteBuffer.allocateDirect(PK_BYTES);
+                ctBuf = ByteBuffer.allocateDirect(CT_BYTES);
+                ssBuf = ByteBuffer.allocateDirect(SS_BYTES);
 
-            // Load the public key into the direct buffer
-            pkBuf.put(publicKey.getRawBytes());
-            pkBuf.flip();
+                // Load the public key into the direct buffer
+                pkBuf.put(publicKey.getRawBytes());
+                pkBuf.flip();
 
-            // Execute native encapsulation across the JNI boundary
-            int result = com.obsidianq.ObsidianNativeBridge.encapsulateSecret(pkBuf, ctBuf, ssBuf);
-            if (result != 0) {
-                throw new SecurityException("Native ML-KEM encapsulation failed (code: " + result + ")");
+                // Execute native encapsulation across the JNI boundary
+                int result = com.obsidianq.ObsidianNativeBridge.encapsulateSecret(pkBuf, ctBuf, ssBuf);
+                if (result != 0) {
+                    throw new SecurityException("Native ML-KEM encapsulation failed (code: " + result + ")");
+                }
+
+                // Extract the shared secret
+                byte[] ssBytes = new byte[SS_BYTES];
+                ssBuf.get(ssBytes);
+
+                // Apply range selection per KEMSpi contract
+                byte[] selectedSecret;
+                if (from == 0 && to == SS_BYTES) {
+                    selectedSecret = ssBytes;
+                } else {
+                    int len = to - from;
+                    selectedSecret = new byte[len];
+                    System.arraycopy(ssBytes, from, selectedSecret, 0, len);
+                }
+
+                String alg = (algorithm != null) ? algorithm : "AES";
+                SecretKey key = new SecretKeySpec(selectedSecret, alg);
+
+                // Extract the ciphertext
+                byte[] ctBytes = new byte[CT_BYTES];
+                ctBuf.get(ctBytes);
+
+                return new javax.crypto.KEM.Encapsulated(key, ctBytes, null);
+            } finally {
+                if (pkBuf != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(pkBuf);
+                if (ctBuf != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ctBuf);
+                if (ssBuf != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ssBuf);
             }
-
-            // Extract the shared secret
-            byte[] ssBytes = new byte[SS_BYTES];
-            ssBuf.get(ssBytes);
-
-            // Apply range selection per KEMSpi contract
-            byte[] selectedSecret;
-            if (from == 0 && to == SS_BYTES) {
-                selectedSecret = ssBytes;
-            } else {
-                int len = to - from;
-                selectedSecret = new byte[len];
-                System.arraycopy(ssBytes, from, selectedSecret, 0, len);
-            }
-
-            String alg = (algorithm != null) ? algorithm : "AES";
-            SecretKey key = new SecretKeySpec(selectedSecret, alg);
-
-            // Extract the ciphertext
-            byte[] ctBytes = new byte[CT_BYTES];
-            ctBuf.get(ctBytes);
-
-            return new javax.crypto.KEM.Encapsulated(key, ctBytes, null);
         }
 
         @Override
@@ -143,39 +153,49 @@ public final class KyberKEMSpi implements KEMSpi {
             }
 
             // Allocate off-heap buffers
-            ByteBuffer ctBuf = ByteBuffer.allocateDirect(CT_BYTES);
-            ByteBuffer skBuf = ByteBuffer.allocateDirect(SK_BYTES);
-            ByteBuffer ssBuf = ByteBuffer.allocateDirect(SS_BYTES);
+            ByteBuffer ctBuf = null;
+            ByteBuffer skBuf = null;
+            ByteBuffer ssBuf = null;
 
-            // Load ciphertext and secret key into direct buffers
-            ctBuf.put(encapsulation);
-            ctBuf.flip();
+            try {
+                ctBuf = ByteBuffer.allocateDirect(CT_BYTES);
+                skBuf = ByteBuffer.allocateDirect(SK_BYTES);
+                ssBuf = ByteBuffer.allocateDirect(SS_BYTES);
 
-            skBuf.put(privateKey.getRawBytes());
-            skBuf.flip();
+                // Load ciphertext and secret key into direct buffers
+                ctBuf.put(encapsulation);
+                ctBuf.flip();
 
-            // Execute native decapsulation across the JNI boundary
-            int result = com.obsidianq.ObsidianNativeBridge.decapsulateSecret(ctBuf, skBuf, ssBuf);
-            if (result != 0) {
-                throw new SecurityException("Native ML-KEM decapsulation failed (code: " + result + ")");
+                skBuf.put(privateKey.getRawBytes());
+                skBuf.flip();
+
+                // Execute native decapsulation across the JNI boundary
+                int result = com.obsidianq.ObsidianNativeBridge.decapsulateSecret(ctBuf, skBuf, ssBuf);
+                if (result != 0) {
+                    throw new SecurityException("Native ML-KEM decapsulation failed (code: " + result + ")");
+                }
+
+                // Extract the shared secret
+                byte[] ssBytes = new byte[SS_BYTES];
+                ssBuf.get(ssBytes);
+
+                // Apply range selection per KEMSpi contract
+                byte[] selectedSecret;
+                if (from == 0 && to == SS_BYTES) {
+                    selectedSecret = ssBytes;
+                } else {
+                    int len = to - from;
+                    selectedSecret = new byte[len];
+                    System.arraycopy(ssBytes, from, selectedSecret, 0, len);
+                }
+
+                String alg = (algorithm != null) ? algorithm : "AES";
+                return new SecretKeySpec(selectedSecret, alg);
+            } finally {
+                if (ctBuf != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ctBuf);
+                if (skBuf != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(skBuf);
+                if (ssBuf != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ssBuf);
             }
-
-            // Extract the shared secret
-            byte[] ssBytes = new byte[SS_BYTES];
-            ssBuf.get(ssBytes);
-
-            // Apply range selection per KEMSpi contract
-            byte[] selectedSecret;
-            if (from == 0 && to == SS_BYTES) {
-                selectedSecret = ssBytes;
-            } else {
-                int len = to - from;
-                selectedSecret = new byte[len];
-                System.arraycopy(ssBytes, from, selectedSecret, 0, len);
-            }
-
-            String alg = (algorithm != null) ? algorithm : "AES";
-            return new SecretKeySpec(selectedSecret, alg);
         }
 
         @Override

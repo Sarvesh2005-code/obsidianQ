@@ -2,7 +2,15 @@
 //! Wraps SHA3 and SHAKE functions from the `sha3` crate.
 
 use sha3::{Sha3_256, Sha3_512, Shake128, Shake256, Digest};
-use sha3::digest::{ExtendableOutput, XofReader, Update};
+pub use sha3::digest::{ExtendableOutput, XofReader, Update};
+
+/// Create an active XOF reader for SHAKE-128
+pub fn xof_state(seed: &[u8; 32], x: u8, y: u8) -> impl XofReader {
+    let mut hasher = Shake128::default();
+    Update::update(&mut hasher, seed);
+    Update::update(&mut hasher, &[x, y]);
+    hasher.finalize_xof()
+}
 
 /// Hash H (SHA3-256)
 pub fn hash_h(input: &[u8]) -> [u8; 32] {

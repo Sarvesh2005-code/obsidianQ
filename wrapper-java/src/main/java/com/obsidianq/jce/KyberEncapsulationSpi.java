@@ -48,27 +48,37 @@ public class KyberEncapsulationSpi extends KeyGeneratorSpi {
             throw new IllegalStateException("Remote public key not set for encapsulation.");
         }
         
-        java.nio.ByteBuffer pkBuffer = java.nio.ByteBuffer.allocateDirect(1184);
-        byte[] pkBytes = remotePublicKey.getRawBytes();
-        if (pkBytes != null) {
-            pkBuffer.put(pkBytes);
-            pkBuffer.flip();
+        java.nio.ByteBuffer pkBuffer = null;
+        java.nio.ByteBuffer ctBuffer = null;
+        java.nio.ByteBuffer ssBuffer = null;
+
+        try {
+            pkBuffer = java.nio.ByteBuffer.allocateDirect(1184);
+            byte[] pkBytes = remotePublicKey.getRawBytes();
+            if (pkBytes != null) {
+                pkBuffer.put(pkBytes);
+                pkBuffer.flip();
+            }
+
+            ctBuffer = java.nio.ByteBuffer.allocateDirect(1088);
+            ssBuffer = java.nio.ByteBuffer.allocateDirect(32);
+
+            int status = com.obsidianq.ObsidianNativeBridge.encapsulateSecret(pkBuffer, ctBuffer, ssBuffer);
+            if (status != 0) {
+                throw new RuntimeException("NTT Encapsulation Failed");
+            }
+
+            byte[] ssBytes = new byte[32];
+            ssBuffer.get(ssBytes);
+            
+            byte[] ctBytes = new byte[1088];
+            ctBuffer.get(ctBytes);
+
+            return new KyberEncapsulatedSecret(ssBytes, ctBytes);
+        } finally {
+            if (pkBuffer != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(pkBuffer);
+            if (ctBuffer != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ctBuffer);
+            if (ssBuffer != null) com.obsidianq.ObsidianNativeBridge.zeroizeBuffer(ssBuffer);
         }
-
-        java.nio.ByteBuffer ctBuffer = java.nio.ByteBuffer.allocateDirect(1088);
-        java.nio.ByteBuffer ssBuffer = java.nio.ByteBuffer.allocateDirect(32);
-
-        int status = com.obsidianq.ObsidianNativeBridge.encapsulateSecret(pkBuffer, ctBuffer, ssBuffer);
-        if (status != 0) {
-            throw new RuntimeException("NTT Encapsulation Failed");
-        }
-
-        byte[] ssBytes = new byte[32];
-        ssBuffer.get(ssBytes);
-        
-        byte[] ctBytes = new byte[1088];
-        ctBuffer.get(ctBytes);
-
-        return new KyberEncapsulatedSecret(ssBytes, ctBytes);
     }
 }
