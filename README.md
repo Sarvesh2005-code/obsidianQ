@@ -117,13 +117,44 @@ Benchmarks comparing ObsidianQ against pure-Java implementations on a typical de
 
 ## 📦 Installation
 
-### Maven (Coming Soon — GitHub Packages)
+### Maven (via JitPack)
+
+Add the JitPack repository to your `pom.xml`:
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+```
+
+Add the ObsidianQ dependency:
 ```xml
 <dependency>
-    <groupId>com.obsidianq</groupId>
-    <artifactId>obsidianq-sdk</artifactId>
-    <version>0.1.0</version>
+    <groupId>com.github.Sarvesh2005-code</groupId>
+    <artifactId>obsidianQ</artifactId>
+    <version>v1.0.0</version>
 </dependency>
+```
+
+### Gradle (via JitPack)
+
+Add it in your root `build.gradle` at the end of repositories:
+```gradle
+allprojects {
+    repositories {
+        ...
+        maven { url 'https://jitpack.io' }
+    }
+}
+```
+
+Add the dependency:
+```gradle
+dependencies {
+    implementation 'com.github.Sarvesh2005-code:obsidianQ:v1.0.0'
+}
 ```
 
 ### Build From Source
@@ -132,12 +163,12 @@ Benchmarks comparing ObsidianQ against pure-Java implementations on a typical de
 
 git clone https://github.com/Sarvesh2005-code/obsidianQ.git
 cd obsidianQ
-mvn clean test-compile
+mvn clean compile test-compile
 ```
 
 ### Run the Integrity Test
 ```bash
-mvn exec:java "-Dexec.mainClass=com.obsidianq.JCAIntegrityTest" "-Dexec.classpathScope=test"
+java -cp "target/classes;target/test-classes" com.obsidianq.JCAIntegrityTest
 ```
 
 ---
@@ -195,10 +226,10 @@ obsidianQ/
 - [x] **Phase 1:** FIPS 203 Core Math (NTT, CBD, SHAKE, IND-CPA, bit-packing)
 - [x] **Phase 2:** Java 21 `javax.crypto.KEM` integration
 - [x] **Phase 2:** GitHub Actions cross-platform CI
-- [ ] **Phase 3:** `dudect` constant-time statistical verification
-- [ ] **Phase 3:** Maven Central / GitHub Packages publication
-- [ ] **Phase 4:** Full NIST KAT vector suite validation
-- [ ] **Phase 4:** Formal security audit
+- [x] **Phase 3:** `dudect` constant-time statistical verification
+- [x] **Phase 3:** Standard JCA ASN.1 X.509/PKCS#8 Key Wrapping
+- [x] **Phase 3:** JitPack Release (`v1.0.0`)
+- [ ] **Phase 4:** Official formal security audit
 
 ---
 
