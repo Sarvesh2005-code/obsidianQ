@@ -78,7 +78,7 @@ public final class KyberKEMSpi implements KEMSpi {
             ByteBuffer ssBuf = ByteBuffer.allocateDirect(SS_BYTES);
 
             // Load the public key into the direct buffer
-            pkBuf.put(publicKey.getEncoded());
+            pkBuf.put(publicKey.getRawBytes());
             pkBuf.flip();
 
             // Execute native encapsulation across the JNI boundary
@@ -151,7 +151,7 @@ public final class KyberKEMSpi implements KEMSpi {
             ctBuf.put(encapsulation);
             ctBuf.flip();
 
-            skBuf.put(privateKey.getEncoded());
+            skBuf.put(privateKey.getRawBytes());
             skBuf.flip();
 
             // Execute native decapsulation across the JNI boundary

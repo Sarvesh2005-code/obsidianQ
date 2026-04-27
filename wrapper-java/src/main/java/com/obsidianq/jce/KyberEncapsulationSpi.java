@@ -49,7 +49,7 @@ public class KyberEncapsulationSpi extends KeyGeneratorSpi {
         }
         
         java.nio.ByteBuffer pkBuffer = java.nio.ByteBuffer.allocateDirect(1184);
-        byte[] pkBytes = remotePublicKey.getEncoded();
+        byte[] pkBytes = remotePublicKey.getRawBytes();
         if (pkBytes != null) {
             pkBuffer.put(pkBytes);
             pkBuffer.flip();

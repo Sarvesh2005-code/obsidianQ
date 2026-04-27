@@ -34,6 +34,7 @@ public class JCAIntegrityTest {
         allPassed &= testJava21KemApi();
         allPassed &= testLegacyJcaApi();
         allPassed &= testMultipleRoundTrips();
+        allPassed &= testAsn1Encoding();
 
         System.out.println();
         if (allPassed) {
@@ -177,6 +178,73 @@ public class JCAIntegrityTest {
                 System.err.println("   [❌] FAIL — " + (rounds - passed) + " round-trips failed");
             }
             return allPassed;
+        } catch (Exception e) {
+            System.err.println("   [❌] FAIL — Exception: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // Test 4: ASN.1 Structural Validation
+    // =========================================================================
+    private static boolean testAsn1Encoding() {
+        System.out.println();
+        System.out.println("── Test 4: ASN.1 Structural Validation ──");
+        try {
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance("Kyber768", "ObsidianQ");
+            KeyPair kp = kpg.generateKeyPair();
+
+            byte[] pkEncoded = kp.getPublic().getEncoded();
+            byte[] skEncoded = kp.getPrivate().getEncoded();
+
+            // Verify X.509 format starts with SEQUENCE tag (0x30)
+            if (pkEncoded == null || pkEncoded[0] != 0x30) {
+                System.err.println("   [❌] FAIL — Public key does not start with ASN.1 SEQUENCE tag");
+                return false;
+            }
+
+            // Verify PKCS#8 format starts with SEQUENCE tag (0x30)
+            if (skEncoded == null || skEncoded[0] != 0x30) {
+                System.err.println("   [❌] FAIL — Private key does not start with ASN.1 SEQUENCE tag");
+                return false;
+            }
+
+            // Extract using ASN1Util
+            byte[] rawPk = com.obsidianq.jce.util.ASN1Util.unwrapX509PublicKey(pkEncoded);
+            byte[] rawSk = com.obsidianq.jce.util.ASN1Util.unwrapPKCS8PrivateKey(skEncoded);
+
+            if (rawPk.length != 1184) {
+                System.err.println("   [❌] FAIL — Raw PK length is " + rawPk.length + ", expected 1184");
+                return false;
+            }
+
+            if (rawSk.length != 2400) {
+                System.err.println("   [❌] FAIL — Raw SK length is " + rawSk.length + ", expected 2400");
+                return false;
+            }
+
+            // Use the raw bytes with KEMSpi directly to verify they are valid
+            com.obsidianq.jce.KyberPublicKey kpk = new com.obsidianq.jce.KyberPublicKey(java.nio.ByteBuffer.wrap(rawPk));
+            com.obsidianq.jce.KyberPrivateKey ksk = new com.obsidianq.jce.KyberPrivateKey(java.nio.ByteBuffer.wrap(rawSk));
+
+            KEM kem = KEM.getInstance("ML-KEM-768", "ObsidianQ");
+            KEM.Encapsulator enc = kem.newEncapsulator(kpk);
+            KEM.Encapsulated encapsulated = enc.encapsulate();
+
+            KEM.Decapsulator dec = kem.newDecapsulator(ksk);
+            SecretKey recovered = dec.decapsulate(encapsulated.encapsulation());
+
+            if (!Arrays.equals(encapsulated.key().getEncoded(), recovered.getEncoded())) {
+                System.err.println("   [❌] FAIL — Reconstructed raw keys failed KEM round-trip");
+                return false;
+            }
+
+            System.out.println("   [+] ASN.1 encoding sizes: X.509=" + pkEncoded.length + "B, PKCS#8=" + skEncoded.length + "B");
+            System.out.println("   [+] Successfully unwrapped to raw sizes: pk=" + rawPk.length + "B, sk=" + rawSk.length + "B");
+            System.out.println("   [✅] PASS — ASN.1 X.509 and PKCS#8 encoding validated");
+            return true;
+
         } catch (Exception e) {
             System.err.println("   [❌] FAIL — Exception: " + e.getMessage());
             e.printStackTrace();

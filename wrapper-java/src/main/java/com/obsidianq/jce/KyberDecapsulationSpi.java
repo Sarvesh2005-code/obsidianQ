@@ -54,7 +54,7 @@ public class KyberDecapsulationSpi extends KeyAgreementSpi {
         ctBuffer.flip();
 
         java.nio.ByteBuffer skBuffer = java.nio.ByteBuffer.allocateDirect(2400);
-        byte[] skBytes = localPrivateKey.getEncoded();
+        byte[] skBytes = localPrivateKey.getRawBytes();
         if (skBytes != null) {
             skBuffer.put(skBytes);
             skBuffer.flip();
