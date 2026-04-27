@@ -1,6 +1,6 @@
 [package]
 name = "obsidian-core"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "FIPS 203 ML-KEM-768 cryptographic core for ObsidianQ"
 license = "MIT"
