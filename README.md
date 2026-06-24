@@ -228,46 +228,66 @@ mvn clean compile test-compile
 
 ### Run the Integrity Test
 ```bash
+cd obsidianq-sdk
 java -cp "target/classes;target/test-classes" com.obsidianq.JCAIntegrityTest
+```
+
+---
+
+## 🌐 Hosted KMS Web Server
+
+ObsidianQ includes a **Key Management Service (KMS)** module (`obsidianq-kms`), which exposes the ML-KEM-768 cryptography over a Spring Boot REST API. This allows you to generate quantum-safe keys and exchange shared secrets from any web application without integrating native libraries directly!
+
+### 1. Start the Server
+```bash
+cd obsidianq-kms
+mvn spring-boot:run
+```
+
+### 2. Generate a Quantum-Safe KeyPair
+```bash
+curl -X POST http://localhost:8080/api/v1/kem/generate
+
+# Returns: { "publicKey": "...", "privateKey": "..." }
+```
+
+### 3. Encapsulate (Create Shared Secret)
+```bash
+curl -X POST http://localhost:8080/api/v1/kem/encapsulate \
+  -H "Content-Type: application/json" \
+  -d '{"publicKey": "<BASE64_PUBLIC_KEY>"}'
+
+# Returns: { "ciphertext": "...", "sharedSecret": "..." }
+```
+
+### 4. Decapsulate (Recover Shared Secret)
+```bash
+curl -X POST http://localhost:8080/api/v1/kem/decapsulate \
+  -H "Content-Type: application/json" \
+  -d '{"privateKey": "<BASE64_PRIVATE_KEY>", "ciphertext": "<BASE64_CIPHERTEXT>"}'
+
+# Returns: { "sharedSecret": "..." }
+# The sharedSecret will perfectly match the one generated during encapsulation!
 ```
 
 ---
 
 ## 🧬 Project Structure
 
-```
+```text
 obsidianQ/
-├── core-rust/                    # Rust cryptographic engine
-│   ├── src/
-│   │   ├── lib.rs               # JNI FFI boundary (zero-copy)
-│   │   ├── kem.rs               # ML-KEM KeyGen / Encap / Decap
-│   │   ├── indcpa.rs            # IND-CPA secure encryption
-│   │   ├── ntt.rs               # Number Theoretic Transform
-│   │   ├── reduce.rs            # Montgomery & Barrett reductions
-│   │   ├── poly.rs              # Polynomial arithmetic
-│   │   ├── polyvec.rs           # Polynomial vector operations
-│   │   ├── symmetric.rs         # SHA3 / SHAKE128 / SHAKE256
-│   │   ├── cbd.rs               # Centered Binomial Distribution
-│   │   └── pack.rs              # Bit-packing & serialization
-│   ├── tests/
-│   │   └── kat_test.rs          # NIST Known Answer Test vectors
-│   └── benches/
-│       └── dudect_bench.rs      # Constant-time verification
-├── wrapper-java/                 # Java JCA integration
-│   └── src/main/java/com/obsidianq/
-│       ├── jce/
-│       │   ├── ObsidianQProvider.java
-│       │   ├── KyberKEMSpi.java          # javax.crypto.KEMSpi (Java 21)
-│       │   ├── KyberKeyPairGeneratorSpi.java
-│       │   └── ...
-│       ├── util/
-│       │   └── NativeExtractor.java      # Auto-extracts .dll/.so/.dylib
-│       └── ObsidianNativeBridge.java     # JNI declarations
-├── .github/workflows/ci.yml     # Cross-platform CI
+├── obsidianq-sdk/                # The Core Crypto Library
+│   ├── core-rust/                # Rust cryptographic engine (zero-copy JNI)
+│   ├── wrapper-java/             # Java JCA integration (ObsidianQProvider)
+│   └── pom.xml
+├── obsidianq-kms/                # Spring Boot REST API for Quantum-Safe Key Exchange
+│   ├── src/main/java/.../KemController.java
+│   └── pom.xml
+├── .github/workflows/ci.yml      # Cross-platform CI
 ├── HANDBOOK.md                   # Complete technical reference
 ├── CONTRIBUTING.md               # Contribution guidelines
 ├── SECURITY.md                   # Vulnerability disclosure policy
-└── pom.xml                       # Maven build (triggers Cargo)
+└── pom.xml                       # Root Parent POM
 ```
 
 ---
@@ -278,7 +298,7 @@ obsidianQ/
 - [x] **Phase 2:** Java 21 `javax.crypto.KEM` integration & cross-platform CI
 - [x] **Phase 3:** Constant-time verification & ASN.1 X.509/PKCS#8 Key Wrapping
 - [x] **Phase 4:** Memory zeroization hardening & dynamic rejection sampling (`v1.1.0`)
-- [ ] **Phase 5:** Publish `obsidianq-spring-boot-starter` for seamless web integration
+- [x] **Phase 5:** Publish `obsidianq-kms` Spring Boot Web Server for seamless web integration over HTTP REST APIs
 - [ ] **Phase 6:** Publish directly to Maven Central (`repo1.maven.org`)
 - [ ] **Phase 7:** Support for ML-KEM-512 and ML-KEM-1024
 
