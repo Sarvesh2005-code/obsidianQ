@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.obsidianq</groupId>
+        <artifactId>obsidianq-parent</artifactId>
+        <version>1.1.0</version>
+    </parent>
+
+    <artifactId>obsidianq-sdk</artifactId>
+    <packaging>jar</packaging>
+
+    <name>ObsidianQ</name>
+    <description>Enterprise Quantum-Safe Drop-In Cryptography SDK implementing NIST FIPS 203 (ML-KEM-768)</description>
+    <url>https://github.com/Sarvesh2005-code/obsidianQ</url>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>sarvesh</id>
+            <name>Sarvesh</name>
+            <url>https://github.com/Sarvesh2005-code</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/Sarvesh2005-code/obsidianQ.git</connection>
+        <developerConnection>scm:git:ssh://github.com/Sarvesh2005-code/obsidianQ.git</developerConnection>
+        <url>https://github.com/Sarvesh2005-code/obsidianQ</url>
+    </scm>
+
+    <properties>
+        <!-- Java 21 required for javax.crypto.KEM (JEP 452) -->
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <rust.target.dir>${project.basedir}/core-rust/target/release</rust.target.dir>
+    </properties>
+
+    <dependencies>
+        <!-- JUnit 5 for testing -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.11.4</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <sourceDirectory>${project.basedir}/wrapper-java/src/main/java</sourceDirectory>
+        <testSourceDirectory>${project.basedir}/wrapper-java/src/test/java</testSourceDirectory>
+        <plugins>
+            <!-- Compile Rust Core via Cargo before Java Compilation -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>compile-rust-engine</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <executable>cargo</executable>
+                    <arguments>
+                        <argument>build</argument>
+                        <argument>--release</argument>
+                        <argument>--manifest-path=${project.basedir}/core-rust/Cargo.toml</argument>
+                    </arguments>
+                </configuration>
+            </plugin>
+            
+            <!-- Embed the compiled Rust Dynamic Library into the final JAR -->
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>copy-rust-dylib</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.outputDirectory}/natives</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${rust.target.dir}</directory>
+                                    <includes>
+                                        <include>obsidian_core.dll</include>
+                                        <include>libobsidian_core.dylib</include>
+                                        <include>libobsidian_core.so</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Java Compiler Configuration -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+
+            <!-- Surefire for JUnit 5 tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+
+            <!-- JAR plugin with manifest -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Implementation-Title>ObsidianQ SDK</Implementation-Title>
+                            <Implementation-Version>${project.version}</Implementation-Version>
+                            <Automatic-Module-Name>com.obsidianq</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
